@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,8 +17,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_URL = "mysql+pymysql://root:vagrant@localhost:3306/movie_recommendation"
-engine = create_engine(DB_URL)
+DB_URL = os.getenv("DB_URL")
+engine = create_engine(DB_URL, connect_args={'ssl': {}})
 
 # 클라이언트(React)가 보낼 데이터의 형식을 정의합니다.
 class Rating(BaseModel):

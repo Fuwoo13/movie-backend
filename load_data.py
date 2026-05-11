@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 # 1. MariaDB 연결 설정 
 # 형식: mysql+pymysql://사용자이름:비밀번호@호스트주소:포트번호/데이터베이스이름
 # (예시: 본인의 DB 설정에 맞게 반드시 수정하세요!)
-engine = create_engine("mysql+pymysql://root:vagrant@localhost:3306/movie_recommendation")
+engine = create_engine("mysql+pymysql://avnadmin:1234@mysql-6e9cb4c-skslsh03.i.aivencloud.com:15887/defaultdb", connect_args={'ssl': {}})
 
 # 2. 다운로드한 CSV 파일 읽어오기
 print("데이터를 읽어오는 중...")
