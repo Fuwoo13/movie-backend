@@ -6,8 +6,9 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import Optional
 import os
+import hashlib # 🌟 비밀번호 암호화를 위해 추가된 기본 라이브러리
 
-app = FastAPI(title="영화 추천 API - 협업필터링")
+app = FastAPI(title="영화 추천 API - 협업필터링 + 로그인 기능")
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,15 +27,20 @@ print("데이터 불러오는 중...")
 movies_df = pd.read_sql("SELECT movie_id, title, genres FROM movies", engine)
 ratings_df = pd.read_sql("SELECT user_id, movie_id, rating FROM ratings", engine)
 
-# 여기까지만 미리 만들어둡니다. (메모리 적게 차지함!)
 user_item_matrix = ratings_df.pivot_table(index='movie_id', columns='user_id', values='rating', aggfunc='mean').fillna(0)
 print("메모리 최적화 완료! 서버 정상 작동 시작 🚀")
 # ----------------------------------------------------------------
 
+# 🌟 기존 별점 모델
 class Rating(BaseModel):
     user_id: int
     movie_id: int
     rating: float
+
+# 🌟 새로 추가된 유저 모델 (회원가입/로그인용)
+class UserAuth(BaseModel):
+    username: str
+    password: str
 
 @app.post("/rate")
 def save_rating(rating_data: Rating):
@@ -52,7 +58,7 @@ def save_rating(rating_data: Rating):
 
 @app.get("/")
 def read_root():
-    return {"message": "업그레이드된 AI 영화 추천 서버입니다!"}
+    return {"message": "업그레이드된 AI 영화 추천 서버입니다! (로그인 지원)"}
 
 @app.get("/movies")
 def get_movies(skip: int = 0, limit: int = 20, search: Optional[str] = ""):
@@ -65,16 +71,10 @@ def get_recommendations(movie_id: int):
     if movie_id not in user_item_matrix.index:
          return []
 
-    # 🌟 핵심: 클릭한 영화가 들어오면, 그때서야 유사도 계산을 시작합니다!
     target_movie_vector = user_item_matrix.loc[movie_id].values.reshape(1, -1)
-    
-    # 클릭한 영화 1개 vs 나머지 전체 영화 비교
     sim_scores = cosine_similarity(user_item_matrix, target_movie_vector).flatten()
-    
-    # 점수 높은 순으로 줄 세우기
     sim_series = pd.Series(sim_scores, index=user_item_matrix.index)
     
-    # 1등(자기 자신) 빼고 2~6등 영화 ID 5개 뽑기
     top_5_ids = sim_series.sort_values(ascending=False).iloc[1:6].index.tolist()
     
     recommendations = []
@@ -87,3 +87,48 @@ def get_recommendations(movie_id: int):
         })
         
     return recommendations
+
+# =========================================================
+# 🌟 신규 기능: 회원가입 및 로그인 로직
+# =========================================================
+
+# 비밀번호를 안전하게 해싱(암호화)하는 함수
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+@app.post("/signup")
+def signup(user: UserAuth):
+    check_query = text("SELECT user_id FROM users WHERE username = :username")
+    insert_query = text("INSERT INTO users (username, password) VALUES (:username, :password)")
+    
+    with engine.begin() as conn:
+        # 1. 이미 존재하는 아이디인지 검사
+        existing_user = conn.execute(check_query, {"username": user.username}).fetchone()
+        if existing_user:
+            return {"success": False, "message": "이미 존재하는 아이디입니다."}
+        
+        # 2. 비밀번호 암호화 후 DB에 저장
+        hashed_pw = hash_password(user.password)
+        conn.execute(insert_query, {"username": user.username, "password": hashed_pw})
+        
+    return {"success": True, "message": "회원가입이 완료되었습니다!"}
+
+@app.post("/login")
+def login(user: UserAuth):
+    query = text("SELECT user_id, password FROM users WHERE username = :username")
+    
+    with engine.connect() as conn:
+        result = conn.execute(query, {"username": user.username}).fetchone()
+        
+        # 1. 아이디가 존재하지 않는 경우
+        if not result:
+            return {"success": False, "message": "존재하지 않는 아이디입니다."}
+        
+        # 2. 비밀번호 검증
+        db_user_id = result[0]
+        db_password = result[1]
+        
+        if db_password == hash_password(user.password):
+            return {"success": True, "user_id": db_user_id, "message": "로그인 성공!"}
+        else:
+            return {"success": False, "message": "비밀번호가 틀렸습니다."}
