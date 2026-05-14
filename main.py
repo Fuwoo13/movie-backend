@@ -21,6 +21,17 @@ app.add_middleware(
 # Render 환경변수에서 주소를 가져옵니다.
 DB_URL = os.getenv("DB_URL")
 engine = create_engine(DB_URL, connect_args={'ssl': {}})
+try:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR(50) UNIQUE"))
+except:
+    pass # 칸이 이미 있으면 그냥 통과!
+
+try:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN password VARCHAR(255)"))
+except:
+    pass # 칸이 이미 있으면 그냥 통과!
 
 # --- 🧠 메모리 다이어트를 한 AI 엔진 2.0 ---
 print("데이터 불러오는 중...")
